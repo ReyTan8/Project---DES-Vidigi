@@ -79,50 +79,86 @@ if button_run_pressed:
 
         my_trial.run_trial()
 
-        event_position_df = pd.DataFrame([
-                            {'event': 'arrival',
-                            'x':  50, 'y': 300,
-                            'label': "Arrival" },
+        STEP_SNAPSHOT_MAX = 45
+        LIMIT_DURATION = g.sim_duration + g.warm_up_period
+        WRAP_QUEUES_AT = 15
 
-                            # Triage - minor and trauma
-                            {'event': 'bed_wait_begins',
-                            'x':  205, 'y': 275,
-                            'label': "Waiting for Bed"},
-
-                            {'event': 'bed_occupy_begins',
-                            'x':  205, 'y': 175,
-                            'resource':'n_beds',
-                            'label': "Occupying Bed"},
-
-                            {'event': 'exit',
-                            'x':  270, 'y': 70,
-                            'label': "Exit"}
-
-                        ])
-
-        animate_activity_log(
-                event_log=my_trial.all_event_logs[my_trial.all_event_logs['run']==1],
-                event_position_df= event_position_df,
-                scenario=g(),
-                debug_mode=True,
-                setup_mode=False,
-                every_x_time_units=1,
-                include_play_button=True,
-                icon_and_text_size=20,
-                gap_between_entities=6,
-                gap_between_rows=40,
-                plotly_height=700,
-                frame_duration=200,
-                plotly_width=1200,
-                override_x_max=300,
-                override_y_max=500,
-                limit_duration=g.sim_duration + g.warm_up_period,
-                wrap_queues_at=25,
-                wrap_resources_at=15,
-                step_snapshot_max=125,
-                time_display_units="dhm",
-                display_stage_labels=False,
-                custom_resource_icon="🛏️",
-                add_background_image="https://raw.githubusercontent.com/Bergam0t/vidigi/refs/heads/main/examples/example_1_simplest_case/Simplest%20Model%20Background%20Image%20-%20Horizontal%20Layout.drawio.png",
+        full_patient_df = reshape_for_animations(
+            event_log=my_trial.all_event_logs[my_trial.all_event_logs['run']==1],
+            every_x_time_units=2,
+            step_snapshot_max=STEP_SNAPSHOT_MAX,
+            limit_duration=LIMIT_DURATION,
+            debug_mode=True
             )
+
+        event_position_df = pd.DataFrame([
+                    {'event': 'arrival',
+                     'x':  50, 'y': 300,
+                     'label': "Arrival" },
+
+                    # Triage - minor and trauma
+                    {'event': 'bed_wait_begins',
+                     'x':  275, 'y': 270,
+                     'label': "Waiting for Bed"},
+
+                    {'event': 'bed_occupy_begins',
+                     'x':  275, 'y': 75,
+                     'resource':'n_beds',
+                     'label': "Occupying Bed"},
+
+                    {'event': 'exit',
+                     'x':  400, 'y': 5,
+                     'label': "Exit"}
+
+                ])
+        
+        full_patient_df_plus_pos = generate_animation_df(
+                                    full_patient_df=full_patient_df,
+                                    event_position_df=event_position_df,
+                                    wrap_queues_at=WRAP_QUEUES_AT,
+                                    step_snapshot_max=STEP_SNAPSHOT_MAX,
+                                    gap_between_entities=20,
+                                    gap_between_resources=20,
+                                    gap_between_rows=30,
+                                    debug_mode=True
+                                    )
+        
+        def show_priority_icon(row):
+            if "more" not in row["icon"]:
+                if row["pathway"] == "long-stay":
+                        return "⚠️"
+                else:
+                    return row["icon"]
+            else:
+                return row["icon"]
+            
+        full_patient_df_plus_pos = full_patient_df_plus_pos.assign(
+            icon=full_patient_df_plus_pos.apply(show_priority_icon, axis=1)
+            )
+        
+        animate_activity = generate_animation(
+            full_patient_df_plus_pos=full_patient_df_plus_pos.sort_values(
+                ['patient', 'minute']),
+            event_position_df= event_position_df,
+            scenario=g(),
+            debug_mode=True,
+            setup_mode=False,
+            include_play_button=True,
+            icon_and_text_size=20,
+            plotly_height=700,
+            frame_duration=800,
+            frame_transition_duration=200,
+            plotly_width=1200,
+            override_x_max=300,
+            override_y_max=500,
+            time_display_units="dhm",
+            display_stage_labels=False,
+            gap_between_resources= 20,
+            gap_between_rows=30,
+            wrap_resources_at=15,
+            custom_resource_icon="🛏️",
+            add_background_image="https://raw.githubusercontent.com/ReyTan8/Project---DES-Vidigi/1a779553238f51794820f8cb53781e738401f733/resources/ward.drawio.png?token=GHSAT0AAAAAADAW6B5RZPFKM276ATTFFZDQZ7CXB6Q",
+        )
+
+        st.write(animate_activity)
 
