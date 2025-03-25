@@ -41,7 +41,7 @@ class g:
         Duration the simulation should warm up for
 
     long_stay_prob: float
-        Probabality the patient is a long-stayer             
+        Probabality that the patient is a long-stayer             
 
     '''
     random_number_set = 42
