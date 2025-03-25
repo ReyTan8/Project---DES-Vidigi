@@ -21,8 +21,11 @@ class g:
     n_beds: int
         The number of beds
 
-    bed_los_mean: float
-        Mean of the bed length of stay distribution (Lognormal)
+    bed_short_los_mean: float
+        Mean of the bed length of stay distribution (Lognormal) for short-stay
+
+    bed_long_los_mean: float
+        Mean of the bed length of stay distribution (Lognormal) for long-stay
 
     bed_los_var: float
         Variance of the bed length of stay distribution (Lognormal)
@@ -35,13 +38,17 @@ class g:
         number streams
 
     warm_up_period: int
-        Duration the simulation should warm up for        
+        Duration the simulation should warm up for
+
+    long_stay_prob: float
+        Probabality the patient is a long-stayer             
 
     '''
     random_number_set = 42
 
     n_beds = 5
-    bed_los_mean = 40
+    bed_short_los_mean = 18
+    bed_long_los_mean = 30
     bed_los_var = 5
 
     # Insert hourly arrival rate from csv file into dataframe
@@ -53,6 +60,8 @@ class g:
     sim_duration = 600
     number_of_runs = 10
     warm_up_period = 100
+
+    long_stay_prob = 0.1
 
 # Class representing patients coming into the ward.
 class Patient:
@@ -78,13 +87,18 @@ class Patient:
             time spent in bed
 
         total_time: int
-            time waiting for a bed + time spent in bed                                    
+            time waiting for a bed + time spent in bed
+
+        pathway_type: str
+            indicates whether patient is short- or long-stayer            
+                                             
         '''
         self.identifier = p_id
         self.arrival = -np.inf
         self.wait_bed = -np.inf
         self.bed_los = -np.inf
-        self.total_time = -np.inf        
+        self.total_time = -np.inf
+        self.pathway_type = ''
 
 # Class representing our model of the ward.
 class Model:
@@ -127,13 +141,20 @@ class Model:
         # the model
         self.mean_q_time_bed = 0
 
+        # Arrivals distribution using NSPP Thinning Method
         self.arrivals_dist = NSPPThinning(
           data=g.arrivals_time_dependent_df,
           random_seed1 = run_number * 42,
           random_seed2 = run_number * 88
         )
 
-        self.bed_los_dist = Lognormal(mean = g.bed_los_mean,
+        # Distribution of short LOS
+        self.bed_short_los_dist = Lognormal(mean = g.bed_short_los_mean,
+            stdev = g.bed_los_var,
+            random_seed = self.run_number*g.random_number_set)
+        
+        # Distribution of long LOS
+        self.bed_long_los_dist = Lognormal(mean = g.bed_long_los_mean,
             stdev = g.bed_los_var,
             random_seed = self.run_number*g.random_number_set)
 
@@ -190,13 +211,26 @@ class Model:
     # through the ward.
 
     def occupy_bed(self, patient):
+
+        # to determine whether patient is a long stayer or not
+        if random.uniform(0,1) > g.long_stay_prob:
+            # short stay patient
+            # sample bed los duration
+            self.bed_los = self.bed_short_los_dist.sample()
+            patient.pathway_type = 'short-stay'
+        
+        else:
+            # long stay patient
+            # sample bed los duration
+            self.bed_los = self.bed_long_los_dist.sample()
+            patient.pathway_type = 'long-stay'
+
         self.arrival = self.env.now
 
-        
         # record patient arrival
         self.event_log.append(
             {'patient': patient.identifier,
-             'pathway': 'Simplest',
+             'pathway': patient.pathway_type,
              'event_type': 'arrival_departure',
              'event': 'arrival',
              'time': self.env.now}
@@ -208,7 +242,7 @@ class Model:
         # record time patient starts to wait for bed
         self.event_log.append(
             {'patient': patient.identifier,
-             'pathway': 'Simplest',
+             'pathway': patient.pathway_type,
              'event': 'bed_wait_begins',
              'event_type': 'queue',
              'time': self.env.now}
@@ -225,16 +259,13 @@ class Model:
         # record time patient starts to occupy bed
         self.event_log.append(
             {'patient': patient.identifier,
-                'pathway': 'Simplest',
+                'pathway': patient.pathway_type,
                 'event': 'bed_occupy_begins',
                 'event_type': 'resource_use',
                 'time': self.env.now,
                 'resource_id': bed_resource.id_attribute
                 }
         )
-
-        # sample bed los duration
-        self.bed_los = self.bed_los_dist.sample()
 
         # To block overnight discharge, if end of stay falls between 8pm and 8am 
         # then extend stay until after 8am, and add between 2 and 5 hours
@@ -252,7 +283,7 @@ class Model:
             # LOS extension
             self.event_log.append(
             {'patient': patient.identifier,
-                'pathway': 'Simplest',
+                'pathway': patient.pathway_type,
                 'event': 'overnight_stay',
                 'event_type': 'overnight_log',
                 'time': after_hours_end_time,
@@ -266,7 +297,7 @@ class Model:
 
         self.event_log.append(
             {'patient': patient.identifier,
-                'pathway': 'Simplest',
+                'pathway': patient.pathway_type,
                 'event': 'bed_occupy_complete',
                 'event_type': 'resource_use_end',
                 'time': self.env.now,
@@ -282,7 +313,7 @@ class Model:
         # record patient departure from ward
         self.event_log.append(
             {'patient': patient.identifier,
-            'pathway': 'Simplest',
+            'pathway': patient.pathway_type,
             'event': 'depart',
             'event_type': 'arrival_departure',
             'time': self.env.now}
